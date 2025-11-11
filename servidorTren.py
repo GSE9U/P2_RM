@@ -9,6 +9,7 @@ import socket
 import struct
 import time
 import statistics
+import json
 
 MAX_ETHERNET_DATA=1500
 MIN_ETHERNET_DATA=46
@@ -25,12 +26,15 @@ B_MASK=0xFFFFFFFF
 DECENASMICROSECS=100000
 
 if __name__ == "__main__":
-	if len(sys.argv)!=3:
-		print ('Error en los argumentos:\npython3 servidorTren.py ip_escucha puerto_escucha\n')
+	if len(sys.argv) not in (3,5):
+		print ('Error en los argumentos:\npython3 servidorTren.py ip_escucha puerto_escucha [summary_ip summary_port]\n')
 		exit(-1)
 
 	ipListen=sys.argv[1]
 	portListen=int(sys.argv[2])
+	summary_target = None
+	if len(sys.argv) == 5:
+		summary_target = (sys.argv[3], int(sys.argv[4]))
 
 	sock_listen = socket.socket(socket.AF_INET,socket.SOCK_DGRAM) # UDP
 	sock_listen.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF,MAX_BUFFER)
@@ -143,3 +147,30 @@ if __name__ == "__main__":
 	print(f'OWD (s): min={owd_min:.6f}  max={owd_max:.6f}  media={owd_mean:.6f}  jitter(pstdev)={jitter:.6f}')
 	print(f'BW instantáneo (bit/s): min={int(bw_min)}  max={int(bw_max)}  media={int(bw_mean_inst)}')
 	print(f'BW medio global (bit/s): {int(bw_mean_global)}')
+
+	# Envío opcional de resumen por UDP a quien lo solicite (para automatización remota)
+	if summary_target is not None:
+		try:
+			summary = {
+				'ipListen': ipListen,
+				'portListen': portListen,
+				'loopback': is_loopback,
+				'expected': expected,
+				'received': received,
+				'lost': lost,
+				'loss_pct': loss_pct,
+				'owd_min_s': owd_min,
+				'owd_max_s': owd_max,
+				'owd_mean_s': owd_mean,
+				'jitter_s': jitter,
+				'bw_min_bps': bw_min,
+				'bw_max_bps': bw_max,
+				'bw_mean_inst_bps': bw_mean_inst,
+				'bw_mean_global_bps': bw_mean_global,
+			}
+			payload = json.dumps(summary).encode('utf-8')
+			sock_summary = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+			sock_summary.sendto(payload, summary_target)
+		except Exception as e:
+			# Evitar romper salida normal si el envío del resumen falla
+			pass
