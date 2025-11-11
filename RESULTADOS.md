@@ -31,7 +31,7 @@ Rellene este documento con sus medidas. Deje constancia de las versiones de Pyth
 
 ## 5) Medidas con emulador
 - Comando emulador usado:
-- DNI:
+- DNI: 55242328P
 - Resultados deducidos:
   - Ancho de banda:
   - Retardo medio:
