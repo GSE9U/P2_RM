@@ -95,3 +95,105 @@ Análisis final
 - Porcentaje de pérdidas: `loss_pct` (%)
 
 Si quieres, puedo crear un script que automatice las 3 repeticiones y guarde los resultados en ficheros para cada DNI.
+
+MEDICIONES ENTRE DOS ORDENADORES (NO localhost)
+
+Prefacio
+
+Las instrucciones anteriores asumían localhost. A continuación se describen los pasos para realizar las mismas mediciones entre dos ordenadores (PC_A y PC_B). En esta configuración: el servidor (`servidorTren.py`) se ejecuta en PC_A; el emulador y el cliente (`clienteTren2.py`) se ejecutan en PC_B. Capture con Wireshark (o tshark) en ambos equipos en cada experimento y guarde los pcap para análisis.
+
+Nombres y variables (sustituir por IPs reales)
+
+- PC_A_IP: dirección IP de la máquina que ejecuta `servidorTren.py` (ej. 192.168.1.10)
+- PC_B_IP: dirección IP de la máquina que ejecuta `emulador` y `clienteTren2.py` (ej. 192.168.1.20)
+- Puerto servidor: 5000 (ejemplo)
+- Puerto emulador (escucha): 4000 (ejemplo)
+
+Pasos detallados (para cada DNI)
+
+1) En PC_A (servidor + captura Wireshark)
+
+- Iniciar `servidorTren.py` escuchando en la IP de PC_A:
+  ```bash
+  python3 servidorTren.py PC_A_IP 5000
+  ```
+- Iniciar captura de paquetes en la interfaz que conecta con PC_B (Wireshark GUI) o con tshark:
+  ```bash
+  sudo tshark -i <iface> -w captura_PC_A_DNI.pcap
+  ```
+  Mantener la captura hasta que termine el experimento.
+
+2) En PC_B (emulador + cliente + captura Wireshark)
+
+- Iniciar captura en la interfaz que conecta con PC_A:
+  ```bash
+  sudo tshark -i <iface> -w captura_PC_B_DNI.pcap
+  ```
+- In otra terminal de PC_B iniciar el emulador (reenvía a PC_A_IP:5000):
+  ```bash
+  ./emulador PC_B_IP 4000 PC_A_IP 5000 DNI
+  ```
+  Sustituye `DNI` por 55242328 o 02349187.
+
+- En otra terminal de PC_B lanza `clienteTren2.py` apuntando al emulador (primer experimento: sin control de tasa):
+  ```bash
+  python3 clienteTren2.py PC_B_IP 4000 1000 1000 0
+  ```
+  Nota: el primer envío es a máxima velocidad.
+
+3) Qué observar y cómo proceder tras la primera ejecución
+
+- En PC_A el `servidorTren.py` imprimirá las métricas. Anota o guarda la salida (especialmente `bw_mean_global` y `loss_pct`).
+- Detén las capturas pcap en ambos equipos cuando termine el tren y guarda los ficheros.
+
+4) Cálculo del bitrate para medir OWD/jitter
+
+- Usa la `bw_mean_global` obtenida en la ejecución rápida como estimación del ancho de banda impuesto por el emulador.
+- Fija el bitrate objetivo al 90% de ese valor: bitrate_bps = int(0.9 * bw_mean_global).
+
+5) Medición con tasa limitada (medir OWD y jitter)
+
+- En PC_A reinicia/asegura que `servidorTren.py` sigue activo (o vuelve a arrancarlo si hace falta) y prepara captura nueva: `captura_PC_A_DNI_rate.pcap`.
+- En PC_B reinicia captura `captura_PC_B_DNI_rate.pcap`, y lanza de nuevo:
+  ```bash
+  python3 clienteTren2.py PC_B_IP 4000 1000 1000 <bitrate_bps>
+  ```
+- En PC_A recoge la salida del servidor y extrae `owd_mean_s` y `jitter_s`.
+- Guarda las capturas pcap de ambos equipos.
+
+6) Repeticiones y registro (Wireshark obligatorio según tu comentario)
+
+- Para cada DNI realiza:
+  - Una ejecución inicial sin tasa (bitrate 0) y captura pcap en ambos equipos.
+  - Cálculo de bitrate_bps = 0.9 * bw_mean_global.
+  - 3 ejecuciones con ese bitrate (cada una con capturas pcap en ambos equipos).
+- Guarda la salida del servidor (puedes redirigirla a ficheros) y los pcap para análisis posterior.
+
+Ejemplo de comandos concretos (sustituye IPs e iface):
+
+PC_A (servidor):
+```bash
+python3 servidorTren.py 192.168.1.10 5000 > resultado_servidor_DNI.txt
+sudo tshark -i eth0 -w captura_PC_A_DNI.pcap
+```
+
+PC_B (emulador+cliente):
+```bash
+sudo tshark -i eth0 -w captura_PC_B_DNI.pcap &
+./emulador 192.168.1.20 4000 192.168.1.10 5000 55242328
+python3 clienteTren2.py 192.168.1.20 4000 1000 1000 0
+```
+Después de la primera ejecución calcular `bitrate_bps` y repetir:
+```bash
+python3 clienteTren2.py 192.168.1.20 4000 1000 1000 1800000
+```
+(Ajusta `1800000` por el 90% del `bw_mean_global` que obtuviste.)
+
+Notas y consejos prácticos para la medición en dos máquinas
+
+- Asegúrate de usar la interfaz correcta en tshark/wireshark (la que conecta ambos equipos).
+- Si hay firewalls, habilita el tráfico UDP en los puertos usados (4000 y 5000) o desactiva temporalmente el firewall para la prueba.
+- Usar ficheros pcap recolectados en ambos extremos permite verificar pérdidas (comparando secuencias) y analizar latencias desde la perspectiva del emisor y receptor.
+- Si la latencia entre los equipos es alta por la red local, aumenta `trainLength` para obtener medidas más estables.
+
+Actualiza los placeholders `PC_A_IP`, `PC_B_IP` e `iface` por los valores reales de vuestra red antes de ejecutar.
